@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+from io import BytesIO
 
 from scraper import collect_reviews
 from analysis_utils import extract_problems_and_pluses
-from llm_analysis import llm_analyze
 
-st.set_page_config("App Store Reviews", layout="wide")
+st.set_page_config(page_title="App Store Reviews", layout="wide")
 st.title("📱 Анализ отзывов App Store")
 
 APP_ID = st.text_input("App ID (только цифры)")
@@ -38,7 +38,7 @@ if start:
     st.session_state.stop = False
 
     if not APP_ID.isdigit():
-        st.error("App ID должен содержать только цифры")
+        st.error("❌ App ID должен содержать только цифры")
         st.stop()
 
     with st.spinner("Сбор отзывов..."):
@@ -54,34 +54,44 @@ if start:
 
     st.success(f"Собрано отзывов: {len(df)}")
 
+    # ===== Метрики =====
     st.subheader("📊 Общие метрики")
     st.metric("Средний рейтинг", round(df["rating"].mean(), 2))
 
-    st.subheader("🌍 Рейтинг по регионам")
+    st.subheader("🌍 Средний рейтинг по регионам")
     st.bar_chart(df.groupby("region")["rating"].mean())
 
     st.subheader("⭐ Распределение оценок")
     st.bar_chart(df["rating"].value_counts().sort_index())
 
+    # ===== Анализ =====
     problems, pluses = extract_problems_and_pluses(df["review_text"])
 
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("❌ Проблемы")
+        st.subheader("❌ Основные проблемы")
         for k, v in problems.most_common(5):
             st.write(f"{k}: {v}")
 
     with col2:
-        st.subheader("✅ Плюсы")
+        st.subheader("✅ Основные плюсы")
         for k, v in pluses.most_common(5):
             st.write(f"{k}: {v}")
 
-    st.subheader("🤖 LLM-анализ")
-    if st.button("Запустить LLM-анализ"):
-        sample = "\n".join(df["review_text"].sample(min(40, len(df))))
-        st.markdown(llm_analyze(sample))
-
+    # ===== Экспорт =====
     csv = df.to_csv(index=False, encoding="utf-8-sig")
     st.download_button("⬇️ Скачать CSV", csv, "reviews.csv")
 
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="Reviews")
+
+    st.download_button(
+        "⬇️ Скачать XLSX",
+        buffer.getvalue(),
+        "reviews.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    st.subheader("🔎 Пример отзывов")
     st.dataframe(df.head(50))
