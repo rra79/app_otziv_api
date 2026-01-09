@@ -28,7 +28,7 @@ def collect_reviews(app_id: str, regions: list, stop_flag):
                 break
 
             if page == 1:
-                entries = entries[1:]
+                entries = entries[1:]  # metadata
 
             for e in entries:
                 rid = e["id"]["label"]
