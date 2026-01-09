@@ -3,15 +3,14 @@ import hashlib
 import requests
 import pandas as pd
 import streamlit as st
-from langdetect import detect, DetectorFactory, LangDetectException
-
-DetectorFactory.seed = 0
+import re
 
 st.set_page_config(page_title="App Store Reviews Scraper", layout="centered")
 
-st.title("📱 App Store — сбор отзывов (RU)")
+st.title("📱 App Store — сбор русских отзывов")
 st.write("Сбор всех доступных русских отзывов через официальный Apple RSS API")
 
+# ===== ВВОД =====
 APP_ID = st.text_input(
     "App ID приложения (только цифры)",
     placeholder="например: 686449807"
@@ -19,6 +18,7 @@ APP_ID = st.text_input(
 
 START_BUTTON = st.button("🚀 Начать сбор")
 
+# ===== РЕГИОНЫ =====
 COUNTRIES = [
     "ru","us","gb","de","fr","it","es","ca","au","br","mx","jp","kr",
     "ua","kz","by","pl","nl","se","no","fi","dk","tr","il","ae","sa",
@@ -26,9 +26,11 @@ COUNTRIES = [
     "bg","hr","rs","lt","lv","ee","pt","ch","at","be","ie","gr","za","eg"
 ]
 
+# ===== ФИЛЬТР РУССКОГО ТЕКСТА (БЕЗ langdetect) =====
+CYRILLIC_RE = re.compile(r"[а-яА-ЯёЁ]")
 _lang_cache = {}
 
-def is_russian_cached(text: str) -> bool:
+def is_russian(text: str) -> bool:
     if not text:
         return False
 
@@ -36,15 +38,11 @@ def is_russian_cached(text: str) -> bool:
     if key in _lang_cache:
         return _lang_cache[key]
 
-    try:
-        lang = detect(text)
-    except LangDetectException:
-        lang = "unknown"
-
-    result = (lang == "ru")
+    result = bool(CYRILLIC_RE.search(text))
     _lang_cache[key] = result
     return result
 
+# ===== СБОР =====
 if START_BUTTON:
 
     if not APP_ID or not APP_ID.isdigit():
@@ -79,6 +77,7 @@ if START_BUTTON:
                 if not entries:
                     break
 
+                # первая запись — метаданные приложения
                 if page == 1:
                     entries = entries[1:]
 
@@ -89,7 +88,7 @@ if START_BUTTON:
                     if review_id in seen_ids:
                         continue
 
-                    if is_russian_cached(text):
+                    if is_russian(text):
                         all_reviews.append({
                             "review_id": review_id,
                             "author": e["author"]["name"]["label"],
@@ -109,9 +108,10 @@ if START_BUTTON:
                 st.warning(f"⚠️ Ошибка {country}, стр. {page}: {ex}")
                 break
 
+    # ===== СОХРАНЕНИЕ =====
     df = pd.DataFrame(all_reviews).drop_duplicates(subset=["review_id"])
 
-    if "review_date" in df.columns:
+    if not df.empty and "review_date" in df.columns:
         df["review_date"] = pd.to_datetime(df["review_date"], errors="coerce", utc=True)
         df["review_date"] = df["review_date"].dt.tz_localize(None)
 
