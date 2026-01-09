@@ -2,6 +2,7 @@ import time
 import requests
 import pandas as pd
 import streamlit as st
+from io import BytesIO
 
 st.set_page_config(
     page_title="App Store Reviews (RU)",
@@ -11,22 +12,22 @@ st.set_page_config(
 
 # ================= UI =================
 st.title("📱 App Store — отзывы (RU)")
-st.caption("Быстрый сбор всех доступных отзывов из региона 🇷🇺 через Apple RSS")
+st.caption("Быстрый сбор отзывов из региона 🇷🇺 через Apple RSS API")
 
-with st.container():
-    APP_ID = st.text_input(
-        "App ID приложения",
-        placeholder="Например: 686449807",
-        help="Только цифры, без id"
-    )
+APP_ID = st.text_input(
+    "App ID приложения",
+    placeholder="Например: 686449807",
+    help="Только цифры, без id"
+)
 
-    START = st.button("🚀 Начать сбор", use_container_width=True)
+START = st.button("🚀 Начать сбор", use_container_width=True)
 
 st.divider()
 
-# ================= ЛОГИКА =================
-COUNTRY = "ru"
+# ================= ЗАЩИТА ОТ NameError =================
+all_reviews = []
 
+# ================= ЛОГИКА =================
 if START:
 
     if not APP_ID or not APP_ID.isdigit():
@@ -36,13 +37,12 @@ if START:
     progress = st.progress(0)
     status = st.empty()
 
-    all_reviews = []
     seen_ids = set()
-
     page = 1
-    max_pages = 500  # защита от бесконечного цикла
+    max_pages = 500
+    COUNTRY = "ru"
 
-    status.info("🔄 Начинаем сбор отзывов из региона RU")
+    status.info("🔄 Сбор отзывов из региона RU")
 
     while page <= max_pages:
 
@@ -98,45 +98,45 @@ if START:
             st.warning(f"⚠️ Ошибка на странице {page}: {ex}")
             break
 
-    from io import BytesIO
+    # ================= СОХРАНЕНИЕ =================
+    df = pd.DataFrame(all_reviews).drop_duplicates(subset=["review_id"])
 
-# ===== СОХРАНЕНИЕ =====
-df = pd.DataFrame(all_reviews).drop_duplicates(subset=["review_id"])
+    if not df.empty:
+        df["review_date"] = pd.to_datetime(
+            df["review_date"],
+            errors="coerce",
+            utc=True
+        ).dt.tz_localize(None)
 
-if not df.empty:
-    df["review_date"] = pd.to_datetime(
-        df["review_date"],
-        errors="coerce",
-        utc=True
-    ).dt.tz_localize(None)
+    csv_data = df.to_csv(index=False, encoding="utf-8-sig")
 
-# CSV
-csv_data = df.to_csv(index=False, encoding="utf-8-sig")
+    xlsx_buffer = BytesIO()
+    with pd.ExcelWriter(xlsx_buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False)
+    xlsx_buffer.seek(0)
 
-# XLSX в памяти
-xlsx_buffer = BytesIO()
-with pd.ExcelWriter(xlsx_buffer, engine="openpyxl") as writer:
-    df.to_excel(writer, index=False)
-xlsx_buffer.seek(0)
+    st.success(f"✅ Готово! Собрано отзывов: {len(df)}")
 
-st.success(f"✅ Готово! Собрано отзывов: {len(df)}")
+    col1, col2 = st.columns(2)
 
-col1, col2 = st.columns(2)
+    with col1:
+        st.download_button(
+            "⬇️ Скачать CSV",
+            data=csv_data,
+            file_name="appstore_reviews_ru.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
 
-with col1:
-    st.download_button(
-        "⬇️ Скачать CSV",
-        data=csv_data,
-        file_name="appstore_reviews_ru.csv",
-        mime="text/csv",
-        use_container_width=True
-    )
+    with col2:
+        st.download_button(
+            "⬇️ Скачать XLSX",
+            data=xlsx_buffer,
+            file_name="appstore_reviews_ru.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
-with col2:
-    st.download_button(
-        "⬇️ Скачать XLSX",
-        data=xlsx_buffer,
-        file_name="appstore_reviews_ru.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
-    )
+    st.divider()
+    st.subheader("📊 Пример данных")
+    st.dataframe(df.head(100), use_container_width=True)
