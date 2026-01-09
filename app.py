@@ -13,7 +13,7 @@ st.set_page_config(
 
 # ================= UI =================
 st.title("📱 App Store — аналитика отзывов")
-st.caption("Сбор отзывов + дашборды • Apple RSS API")
+st.caption("Apple RSS API • мульти-регионы • дашборды")
 
 APP_ID = st.text_input("App ID приложения", placeholder="686449807")
 
@@ -35,6 +35,7 @@ st.divider()
 # ================= STATE =================
 if "stop" not in st.session_state:
     st.session_state.stop = False
+
 if STOP:
     st.session_state.stop = True
 
@@ -57,8 +58,8 @@ def sentiment(text: str) -> str:
         return "negative"
     return "neutral"
 
-# ================= DATA CLEAN =================
-def prepare_for_excel(df: pd.DataFrame) -> pd.DataFrame:
+# ================= CLEAN FOR EXCEL =================
+def prepare_for_export(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
     if "review_date" in df.columns:
@@ -169,13 +170,17 @@ if START:
     st.divider()
     st.header("📊 Дашборд")
 
+    # безопасные типы
+    df["rating"] = pd.to_numeric(df["rating"], errors="coerce")
+    df["review_date"] = pd.to_datetime(df["review_date"], errors="coerce")
+
     c1, c2, c3 = st.columns(3)
     c1.metric("Всего отзывов", len(df))
-    c2.metric("Средний рейтинг", round(df["rating"].astype(int).mean(), 2))
+    c2.metric("Средний рейтинг", round(df["rating"].mean(), 2))
     c3.metric("Регионов", df["region"].nunique())
 
     st.subheader("⭐ Распределение рейтингов")
-    st.bar_chart(df["rating"].astype(int).value_counts().sort_index())
+    st.bar_chart(df["rating"].value_counts().sort_index())
 
     st.subheader("💬 Тональность")
     st.bar_chart(df["sentiment"].value_counts())
@@ -184,16 +189,22 @@ if START:
     st.bar_chart(df["region"].value_counts())
 
     st.subheader("📈 Динамика отзывов")
-    df["review_date"] = pd.to_datetime(df["review_date"], errors="coerce")
-    daily = df.groupby(df["review_date"].dt.date).size()
+    daily = df.dropna(subset=["review_date"]).groupby(
+        df["review_date"].dt.date
+    ).size()
     st.line_chart(daily)
 
     st.subheader("🌎 Средний рейтинг по регионам")
-    avg_region = df.groupby("region")["rating"].astype(int).mean().sort_values()
+    avg_region = (
+        df.dropna(subset=["rating"])
+        .groupby("region")["rating"]
+        .mean()
+        .sort_values()
+    )
     st.bar_chart(avg_region)
 
     # ================= EXPORT =================
-    df_export = prepare_for_excel(df)
+    df_export = prepare_for_export(df)
 
     csv = df_export.to_csv(index=False, encoding="utf-8-sig")
 
