@@ -98,42 +98,45 @@ if START:
             st.warning(f"⚠️ Ошибка на странице {page}: {ex}")
             break
 
-    # ================= СОХРАНЕНИЕ =================
-    df = pd.DataFrame(all_reviews).drop_duplicates(subset=["review_id"])
+    from io import BytesIO
 
-    if not df.empty:
-        df["review_date"] = pd.to_datetime(
-            df["review_date"],
-            errors="coerce",
-            utc=True
-        ).dt.tz_localize(None)
+# ===== СОХРАНЕНИЕ =====
+df = pd.DataFrame(all_reviews).drop_duplicates(subset=["review_id"])
 
-    csv_data = df.to_csv(index=False, encoding="utf-8-sig")
-    df.to_excel("appstore_reviews_ru.xlsx", index=False)
+if not df.empty:
+    df["review_date"] = pd.to_datetime(
+        df["review_date"],
+        errors="coerce",
+        utc=True
+    ).dt.tz_localize(None)
 
-    st.success(f"✅ Готово! Собрано отзывов: {len(df)}")
+# CSV
+csv_data = df.to_csv(index=False, encoding="utf-8-sig")
 
-    col1, col2 = st.columns(2)
+# XLSX в памяти
+xlsx_buffer = BytesIO()
+with pd.ExcelWriter(xlsx_buffer, engine="openpyxl") as writer:
+    df.to_excel(writer, index=False)
+xlsx_buffer.seek(0)
 
-    with col1:
-        st.download_button(
-            "⬇️ Скачать CSV",
-            data=csv_data,
-            file_name="appstore_reviews_ru.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
+st.success(f"✅ Готово! Собрано отзывов: {len(df)}")
 
-    with col2:
-        with open("appstore_reviews_ru.xlsx", "rb") as f:
-            st.download_button(
-                "⬇️ Скачать XLSX",
-                data=f,
-                file_name="appstore_reviews_ru.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
+col1, col2 = st.columns(2)
 
-    st.divider()
-    st.subheader("📊 Пример данных")
-    st.dataframe(df.head(100), use_container_width=True)
+with col1:
+    st.download_button(
+        "⬇️ Скачать CSV",
+        data=csv_data,
+        file_name="appstore_reviews_ru.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+
+with col2:
+    st.download_button(
+        "⬇️ Скачать XLSX",
+        data=xlsx_buffer,
+        file_name="appstore_reviews_ru.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
